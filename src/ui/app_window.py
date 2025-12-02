@@ -1,10 +1,12 @@
 import customtkinter as ctk
 import tkinter.filedialog as filedialog
 import os
+from PIL import Image
 from .panels import FileListPanel, InspectorPanel
 from ..core.scanner import Scanner
 from ..core.engine import TransferEngine
 from ..model.file_obj import SyncStatus
+from ..utils.assets import get_asset_path
 
 class AppWindow(ctk.CTk):
     def __init__(self):
@@ -24,6 +26,15 @@ class AppWindow(ctk.CTk):
         self.transfer_engine = TransferEngine()
         self.night_shift_on = False
 
+        # Load Icons
+        try:
+            self.icon_folder = ctk.CTkImage(Image.open(get_asset_path("folder.png")), size=(24, 24))
+            self.icon_disk = ctk.CTkImage(Image.open(get_asset_path("disk.png")), size=(24, 24))
+        except Exception as e:
+            print(f"Warning: Icons failed to load: {e}")
+            self.icon_folder = None
+            self.icon_disk = None
+
         # --- LAYOUT ---
         self.grid_columnconfigure(0, weight=1) 
         self.grid_columnconfigure(1, weight=1) 
@@ -34,17 +45,30 @@ class AppWindow(ctk.CTk):
         self.header = ctk.CTkFrame(self, height=60, corner_radius=0)
         self.header.grid(row=0, column=0, columnspan=3, sticky="ew")
         
-        self.btn_source = ctk.CTkButton(self.header, text="📂 Select Source", command=self.select_source)
+        # Updated Buttons with Images
+        self.btn_source = ctk.CTkButton(
+            self.header, 
+            text=" Select Source", 
+            image=self.icon_folder,
+            command=self.select_source,
+            font=("Arial", 13, "bold")
+        )
         self.btn_source.pack(side="left", padx=20, pady=10)
 
-        self.btn_dest = ctk.CTkButton(self.header, text="💾 Select Destination", command=self.select_dest, fg_color="#2b4b6b")
+        self.btn_dest = ctk.CTkButton(
+            self.header, 
+            text=" Select Destination", 
+            image=self.icon_disk,
+            command=self.select_dest, 
+            fg_color="#2b4b6b",
+            font=("Arial", 13, "bold")
+        )
         self.btn_dest.pack(side="left", padx=10, pady=10)
 
         self.btn_night_shift = ctk.CTkSwitch(self.header, text="Eye Guard", command=self.toggle_night_shift)
         self.btn_night_shift.pack(side="right", padx=20, pady=10)
 
         # --- PANELS ---
-        # Added on_background_click=self.deselect_all
         self.panel_source = FileListPanel(self, title="SOURCE MEDIA", on_select_missing=self.select_all_missing, on_background_click=self.deselect_all)
         self.panel_source.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
 
@@ -115,12 +139,10 @@ class AppWindow(ctk.CTk):
         self.update_inspector()
 
     def on_file_click(self, file_obj):
-        # TOGGLE LOGIC
         if self.highlighted_id == file_obj.id:
-            self.deselect_all() # Re-use the clean-up logic
+            self.deselect_all()
             return
 
-        # NEW CLICK LOGIC:
         self.highlighted_id = file_obj.id
         self.panel_inspector.show_file(file_obj)
         self.panel_source.highlight_file(file_obj.id)
@@ -128,16 +150,13 @@ class AppWindow(ctk.CTk):
             self.panel_dest.highlight_file(file_obj.id)
 
     def deselect_all(self):
-        """Clears highlighting (Focus) but keeps Selection (Checkboxes)"""
         self.highlighted_id = None
         self.panel_source.highlight_file(None)
         if self.dest_path: self.panel_dest.highlight_file(None)
         
-        # Reset Inspector based on selection state
         if len(self.selected_ids) == 0:
             self.panel_inspector.clear_view()
         else:
-            # If batch selection exists, revert inspector to showing batch stats
             total_size = sum(f.size for f in self.source_files if f.id in self.selected_ids)
             self.panel_inspector.show_batch(len(self.selected_ids), total_size)
 
