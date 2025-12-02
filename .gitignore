@@ -1,0 +1,19 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# PyInstaller Build Artifacts
+build/
+dist/
+*.spec
+
+# OS Metadata
+.DS_Store
+Thumbs.db
+
+# VS Code Settings (Optional, usually good to ignore)
+.vscode/
+
+# Virtual Environments (if you use them later)
+venv/
+env/
