@@ -5,11 +5,12 @@ from .widgets import FileRow
 from ..model.file_obj import FileObj, SyncStatus
 
 class FileListPanel(ctk.CTkFrame):
-    def __init__(self, master, title, is_dest=False, on_select_missing=None):
+    def __init__(self, master, title, is_dest=False, on_select_missing=None, on_background_click=None):
         super().__init__(master)
         self.is_dest = is_dest
         self.rows = [] 
         self.on_select_missing = on_select_missing
+        self.on_background_click = on_background_click # NEW Callback
 
         # Header
         self.lbl_title = ctk.CTkLabel(self, text=title, font=("Arial", 14, "bold"))
@@ -23,6 +24,17 @@ class FileListPanel(ctk.CTkFrame):
         # Scrollable Area
         self.scroll_frame = ctk.CTkScrollableFrame(self, label_text="Files")
         self.scroll_frame.pack(expand=True, fill="both", padx=5, pady=5)
+        
+        # BINDING THE VOID:
+        # We bind to the canvas to catch clicks that miss the rows
+        # We use a lambda to ignore the event object
+        if self.on_background_click:
+            self.scroll_frame.bind("<Button-1>", lambda e: self.on_background_click())
+            # Depending on CTk version, we might need to bind to the canvas directly
+            try:
+                self.scroll_frame._parent_canvas.bind("<Button-1>", lambda e: self.on_background_click())
+            except:
+                pass 
 
         # Footer (Only for Source Pane)
         if not is_dest:
@@ -62,11 +74,18 @@ class FileListPanel(ctk.CTkFrame):
             row = FileRow(self.scroll_frame, file_obj, on_click=on_row_click, on_toggle=on_row_toggle)
             row.pack(fill="x", pady=2, padx=2)
             
-            # Restore state
-            if file_obj.id in selected_ids:
+            if selected_ids and file_obj.id in selected_ids:
                 row.set_checked(True)
             
             self.rows.append(row)
+            
+    def highlight_file(self, file_id):
+        """Finds a row with this ID and highlights it visually"""
+        for row in self.rows:
+            if row.file_obj.id == file_id:
+                row.set_selected(True)
+            else:
+                row.set_selected(False)
 
 class InspectorPanel(ctk.CTkFrame):
     def __init__(self, master):
@@ -93,20 +112,21 @@ class InspectorPanel(ctk.CTkFrame):
         self.info_label.configure(text=details)
 
     def show_batch(self, count, total_size_bytes):
-        """New: Batch View"""
         self.lbl_preview.configure(text=f"{count} Items")
-        
-        # Format total size
         size_str = f"{total_size_bytes} B"
         for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
             if total_size_bytes < 1024:
                 size_str = f"{total_size_bytes:.2f} {unit}"
                 break
             total_size_bytes /= 1024
-            
         details = (
             f"BATCH SELECTION\n\n"
             f"ITEMS SELECTED:\n{count}\n\n"
             f"TOTAL SIZE:\n{size_str}\n\n"
         )
         self.info_label.configure(text=details)
+
+    def clear_view(self):
+        """Resets the inspector to empty state"""
+        self.lbl_preview.configure(text="No Selection")
+        self.info_label.configure(text="")

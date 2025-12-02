@@ -20,6 +20,7 @@ class AppWindow(ctk.CTk):
         self.dest_path = None
         self.source_files = []
         self.selected_ids = set() 
+        self.highlighted_id = None 
         self.transfer_engine = TransferEngine()
         self.night_shift_on = False
 
@@ -43,10 +44,11 @@ class AppWindow(ctk.CTk):
         self.btn_night_shift.pack(side="right", padx=20, pady=10)
 
         # --- PANELS ---
-        self.panel_source = FileListPanel(self, title="SOURCE MEDIA", on_select_missing=self.select_all_missing)
+        # Added on_background_click=self.deselect_all
+        self.panel_source = FileListPanel(self, title="SOURCE MEDIA", on_select_missing=self.select_all_missing, on_background_click=self.deselect_all)
         self.panel_source.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
 
-        self.panel_dest = FileListPanel(self, title="DESTINATION BACKUP", is_dest=True)
+        self.panel_dest = FileListPanel(self, title="DESTINATION BACKUP", is_dest=True, on_background_click=self.deselect_all)
         self.panel_dest.grid(row=1, column=1, sticky="nsew", padx=5, pady=5)
 
         self.panel_inspector = InspectorPanel(self)
@@ -72,6 +74,7 @@ class AppWindow(ctk.CTk):
             self.source_path = path
             self.panel_source.lbl_title.configure(text=f"SOURCE: {os.path.basename(path)}")
             self.selected_ids.clear() 
+            self.highlighted_id = None
             self.refresh_view()
 
     def select_dest(self):
@@ -85,12 +88,10 @@ class AppWindow(ctk.CTk):
     def refresh_view(self):
         if not self.source_path: return
 
-        # 1. Scan & Compare
         self.source_files = Scanner.scan_directory(self.source_path)
         if self.dest_path:
             self.source_files = Scanner.compare_directories(self.source_files, self.dest_path)
             
-        # 2. Render Source (With Checkbox Logic)
         self.panel_source.render_files(
             self.source_files, 
             on_row_click=self.on_file_click, 
@@ -98,27 +99,47 @@ class AppWindow(ctk.CTk):
             selected_ids=self.selected_ids
         )
 
-        # 3. Render Destination (This was the missing part!)
-        # We render the same file list to visualize the "Ghost" (Red) vs "Synced" (Green) status
         if self.dest_path:
             self.panel_dest.render_files(
                 self.source_files,
-                on_row_click=self.on_file_click,
-                on_row_toggle=None, # Dest doesn't need checkboxes yet
-                selected_ids=set()  # No visuals for selection on Dest yet
+                on_row_click=self.on_file_click, 
+                on_row_toggle=None, 
+                selected_ids=set() 
             )
 
-        # 4. Update Footer State
         if len(self.selected_ids) > 0 and self.dest_path:
             self.btn_transfer.configure(state="normal", text=f"TRANSFER {len(self.selected_ids)} FILES")
         else:
             self.btn_transfer.configure(state="disabled", text="SELECT FILES TO TRANSFER")
             
-        # 5. Update Inspector
         self.update_inspector()
 
     def on_file_click(self, file_obj):
+        # TOGGLE LOGIC
+        if self.highlighted_id == file_obj.id:
+            self.deselect_all() # Re-use the clean-up logic
+            return
+
+        # NEW CLICK LOGIC:
+        self.highlighted_id = file_obj.id
         self.panel_inspector.show_file(file_obj)
+        self.panel_source.highlight_file(file_obj.id)
+        if self.dest_path:
+            self.panel_dest.highlight_file(file_obj.id)
+
+    def deselect_all(self):
+        """Clears highlighting (Focus) but keeps Selection (Checkboxes)"""
+        self.highlighted_id = None
+        self.panel_source.highlight_file(None)
+        if self.dest_path: self.panel_dest.highlight_file(None)
+        
+        # Reset Inspector based on selection state
+        if len(self.selected_ids) == 0:
+            self.panel_inspector.clear_view()
+        else:
+            # If batch selection exists, revert inspector to showing batch stats
+            total_size = sum(f.size for f in self.source_files if f.id in self.selected_ids)
+            self.panel_inspector.show_batch(len(self.selected_ids), total_size)
 
     def on_file_toggle(self, file_obj, is_checked):
         if is_checked:
@@ -126,7 +147,6 @@ class AppWindow(ctk.CTk):
         else:
             self.selected_ids.discard(file_obj.id)
         
-        # Update UI text immediately
         if len(self.selected_ids) > 0 and self.dest_path:
             self.btn_transfer.configure(state="normal", text=f"TRANSFER {len(self.selected_ids)} FILES")
         else:
@@ -135,7 +155,6 @@ class AppWindow(ctk.CTk):
         self.update_inspector()
 
     def select_all_missing(self):
-        """Utility: Check all boxes where status is MISSING"""
         count = 0
         for f in self.source_files:
             if f.status == SyncStatus.MISSING:
@@ -144,15 +163,14 @@ class AppWindow(ctk.CTk):
         self.refresh_view() 
 
     def update_inspector(self):
-        if len(self.selected_ids) == 0:
-            return 
-        elif len(self.selected_ids) == 1:
-            file_id = next(iter(self.selected_ids))
-            file_obj = next((f for f in self.source_files if f.id == file_id), None)
-            if file_obj: self.panel_inspector.show_file(file_obj)
-        else:
+        if len(self.selected_ids) > 0:
             total_size = sum(f.size for f in self.source_files if f.id in self.selected_ids)
             self.panel_inspector.show_batch(len(self.selected_ids), total_size)
+        elif self.highlighted_id:
+            file_obj = next((f for f in self.source_files if f.id == self.highlighted_id), None)
+            if file_obj: self.panel_inspector.show_file(file_obj)
+        else:
+            self.panel_inspector.clear_view()
 
     def start_transfer(self):
         files_to_transfer = [
