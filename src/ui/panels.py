@@ -1,6 +1,7 @@
 import customtkinter as ctk
 import shutil
 import tkinter
+import concurrent.futures
 from typing import List
 from .widgets import FileRow
 from ..model.file_obj import FileObj, SyncStatus, FileType
@@ -89,44 +90,59 @@ class InspectorPanel(ctk.CTkFrame):
         self.lbl_header = ctk.CTkLabel(self, text="INSPECTOR", font=("Arial", 12, "bold"), text_color="gray")
         self.lbl_header.pack(pady=20)
         
-        # ANCHOR: Keep a reference to prevent garbage collection
+        # STATE MANAGEMENT
         self.current_image = None
-        
-        # TRACKING: Keep track of which file we are currently trying to show
-        # This prevents "old" thumbnails from loading onto "new" file selections
         self.active_file_id = None
+        self.thumbnail_cache = {} # MEMORY CACHE: {file_path: CTkImage}
+        
+        # THREAD POOL: 1 Worker to process thumbnails one by one without freezing UI
+        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
 
+        # UI LAYOUT
         self.preview_box = ctk.CTkFrame(self, height=150, fg_color="#1a1a1a")
         self.preview_box.pack(fill="x", padx=20, pady=10)
-        
-        self.lbl_preview = ctk.CTkLabel(self.preview_box, text="No Selection")
-        self.lbl_preview.place(relx=0.5, rely=0.5, anchor="center")
+        self._create_preview_label()
 
         self.info_label = ctk.CTkLabel(self, text="", justify="left", anchor="w")
         self.info_label.pack(fill="x", padx=20, pady=20)
 
+    def _create_preview_label(self):
+        self.lbl_preview = ctk.CTkLabel(self.preview_box, text="No Selection")
+        self.lbl_preview.place(relx=0.5, rely=0.5, anchor="center")
+
+    def _rebuild_label(self):
+        try:
+            self.lbl_preview.destroy()
+        except:
+            pass
+        self._create_preview_label()
+
     def show_file(self, file_obj: FileObj):
-        # 1. Update the Tracker
         self.active_file_id = file_obj.id
 
-        # 2. SAFE UI UPDATE (The "Shield")
+        # 1. Reset UI (Safe Mode)
         try:
-            # We clear the image AND set the text in one go.
-            # We also wrap it in try/except because if the old image is 'dead', Tkinter might throw an error.
-            # Catching it allows the app to continue without crashing.
             self.lbl_preview.configure(image=None, text=file_obj.file_type.name)
             self.current_image = None
         except tkinter.TclError:
-            # If Tkinter complains about the old image, just force a reset and move on.
-            pass
+            self._rebuild_label()
+            self.lbl_preview.configure(text=file_obj.file_type.name)
 
-        # 3. THUMBNAIL LOGIC (Only if Video)
+        # 2. THUMBNAIL LOGIC
         if file_obj.file_type == FileType.VIDEO:
-            self.lbl_preview.configure(text="Generating...")
-            # Schedule generation, passing the ID so we can verify later
-            self.after(10, lambda: self._generate_and_show(file_obj, file_obj.id))
+            # CHECK CACHE FIRST (Instant Load)
+            if file_obj.path in self.thumbnail_cache:
+                self._apply_image(self.thumbnail_cache[file_obj.path])
+            else:
+                # CACHE MISS: Offload to Thread
+                try:
+                    self.lbl_preview.configure(text="Generating...", image=None)
+                    self.executor.submit(self._threaded_generation, file_obj.path, file_obj.id)
+                except Exception:
+                    self._rebuild_label()
+                    self.lbl_preview.configure(text="Generating...")
         
-        # 4. METADATA
+        # 3. METADATA
         details = (
             f"FILENAME:\n{file_obj.filename}\n\n"
             f"SIZE:\n{file_obj.formatted_size}\n\n"
@@ -135,39 +151,58 @@ class InspectorPanel(ctk.CTkFrame):
         )
         self.info_label.configure(text=details)
 
-    def _generate_and_show(self, file_obj, requested_id):
-        """Helper method to generate thumbnail safely"""
-        # RACE CONDITION CHECK:
-        # If the user has already clicked another file (active_file_id changed),
-        # STOP immediately. Do not try to update the UI.
+    def _threaded_generation(self, path, requested_id):
+        """Runs on Background Thread - Extracts Raw PIL Image"""
         if self.active_file_id != requested_id:
-            return
-
-        try:
-            img = ThumbnailGenerator.generate_thumbnail(file_obj.path)
+            return # Cancel if user clicked away
             
-            # Check again right before rendering
-            if self.active_file_id != requested_id:
-                return
-
-            if img:
-                self.current_image = ctk.CTkImage(light_image=img, dark_image=img, size=(200, 110))
-                self.lbl_preview.configure(image=self.current_image, text="")
+        try:
+            pil_image = ThumbnailGenerator.generate_thumbnail(path)
+            
+            # Send result back to Main Thread for UI Update
+            if pil_image:
+                self.after(0, lambda: self._on_thumbnail_ready(path, requested_id, pil_image))
             else:
-                self.lbl_preview.configure(text="No Preview")
+                self.after(0, lambda: self._on_thumbnail_failed(requested_id))
         except Exception as e:
-             # Fail silently in the UI, log to console
-             print(f"Preview Error: {e}")
-             if self.active_file_id == requested_id:
-                 self.lbl_preview.configure(text="Preview Error")
+            print(f"BG Thread Error: {e}")
+
+    def _on_thumbnail_ready(self, path, requested_id, pil_image):
+        """Runs on Main Thread - Converts to CTkImage and updates UI"""
+        # Create CTkImage (must be on main thread)
+        ctk_img = ctk.CTkImage(light_image=pil_image, dark_image=pil_image, size=(200, 110))
+        
+        # Store in Cache
+        self.thumbnail_cache[path] = ctk_img
+
+        # Update UI only if user is still looking at this file
+        if self.active_file_id == requested_id:
+            self._apply_image(ctk_img)
+
+    def _on_thumbnail_failed(self, requested_id):
+        if self.active_file_id == requested_id:
+            try:
+                self.lbl_preview.configure(text="No Preview", image=None)
+            except: 
+                pass
+
+    def _apply_image(self, ctk_img):
+        try:
+            self.current_image = ctk_img # Anchor
+            self.lbl_preview.configure(image=self.current_image, text="")
+        except tkinter.TclError:
+            self._rebuild_label()
+            self.current_image = ctk_img
+            self.lbl_preview.configure(image=self.current_image, text="")
 
     def show_batch(self, count, total_size_bytes):
-        self.active_file_id = None # Cancel any pending thumbnails
+        self.active_file_id = None
         try:
             self.lbl_preview.configure(image=None, text=f"{count} Items")
             self.current_image = None
         except tkinter.TclError:
-            pass
+            self._rebuild_label()
+            self.lbl_preview.configure(image=None, text=f"{count} Items")
 
         size_str = f"{total_size_bytes} B"
         for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
@@ -183,7 +218,7 @@ class InspectorPanel(ctk.CTkFrame):
         self.info_label.configure(text=details)
 
     def clear_view(self):
-        self.active_file_id = None # Cancel any pending thumbnails
+        self.active_file_id = None
         try:
             self.lbl_preview.configure(image=None, text="No Selection")
             self.current_image = None
