@@ -131,12 +131,7 @@ class AppWindow(ctk.CTk):
                 selected_ids=set() 
             )
 
-        if len(self.selected_ids) > 0 and self.dest_path:
-            self.btn_transfer.configure(state="normal", text=f"TRANSFER {len(self.selected_ids)} FILES")
-        else:
-            self.btn_transfer.configure(state="disabled", text="SELECT FILES TO TRANSFER")
-            
-        self.update_inspector()
+        self.update_ui_state()
 
     def on_file_click(self, file_obj):
         if self.highlighted_id == file_obj.id:
@@ -157,8 +152,8 @@ class AppWindow(ctk.CTk):
         if len(self.selected_ids) == 0:
             self.panel_inspector.clear_view()
         else:
-            total_size = sum(f.size for f in self.source_files if f.id in self.selected_ids)
-            self.panel_inspector.show_batch(len(self.selected_ids), total_size)
+            # Refresh batch view (likely with updated warning state if applicable)
+            self.update_ui_state()
 
     def on_file_toggle(self, file_obj, is_checked):
         if is_checked:
@@ -166,12 +161,7 @@ class AppWindow(ctk.CTk):
         else:
             self.selected_ids.discard(file_obj.id)
         
-        if len(self.selected_ids) > 0 and self.dest_path:
-            self.btn_transfer.configure(state="normal", text=f"TRANSFER {len(self.selected_ids)} FILES")
-        else:
-            self.btn_transfer.configure(state="disabled", text="SELECT FILES TO TRANSFER")
-            
-        self.update_inspector()
+        self.update_ui_state()
 
     def select_all_missing(self):
         count = 0
@@ -181,15 +171,55 @@ class AppWindow(ctk.CTk):
                 count += 1
         self.refresh_view() 
 
-    def update_inspector(self):
+    def update_ui_state(self):
+        """Central hub for updating Inspector and Transfer Button logic"""
+        
+        total_size = 0
+        warning_msg = None
+        is_blocked = False
+
+        # Calculate Total
         if len(self.selected_ids) > 0:
             total_size = sum(f.size for f in self.source_files if f.id in self.selected_ids)
-            self.panel_inspector.show_batch(len(self.selected_ids), total_size)
+
+        # 1. Check Capacity Logic
+        if self.dest_path:
+            dest_free_space = self.panel_dest.free_space
+            if total_size > dest_free_space:
+                is_blocked = True
+                self.panel_dest.set_alert_mode(True)
+                
+                # Create detailed warning message
+                def fmt(b): 
+                    for u in ['B','KB','MB','GB']: 
+                        if b<1024: return f"{b:.2f}{u}"
+                        b/=1024
+                    return f"{b:.2f}TB"
+                
+                deficit = total_size - dest_free_space
+                warning_msg = (f"REQUIRED: {fmt(total_size)}\n"
+                               f"AVAILABLE: {fmt(dest_free_space)}\n"
+                               f"FREE UP: {fmt(deficit)}")
+            else:
+                self.panel_dest.set_alert_mode(False)
+
+        # 2. Update Inspector
+        if len(self.selected_ids) > 0:
+            self.panel_inspector.show_batch(len(self.selected_ids), total_size, warning_msg)
         elif self.highlighted_id:
             file_obj = next((f for f in self.source_files if f.id == self.highlighted_id), None)
             if file_obj: self.panel_inspector.show_file(file_obj)
         else:
             self.panel_inspector.clear_view()
+
+        # 3. Update Button
+        if len(self.selected_ids) > 0 and self.dest_path:
+            if is_blocked:
+                self.btn_transfer.configure(state="disabled", text="INSUFFICIENT DISK SPACE", fg_color="#550000")
+            else:
+                self.btn_transfer.configure(state="normal", text=f"TRANSFER {len(self.selected_ids)} FILES", fg_color="#c42b1c")
+        else:
+            self.btn_transfer.configure(state="disabled", text="SELECT FILES TO TRANSFER")
 
     def start_transfer(self):
         files_to_transfer = [

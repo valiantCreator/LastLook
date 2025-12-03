@@ -14,6 +14,10 @@ class FileListPanel(ctk.CTkFrame):
         self.rows = [] 
         self.on_select_missing = on_select_missing
         self.on_background_click = on_background_click
+        
+        # CAPACITY TRACKING
+        self.free_space = 0
+        self.total_space = 0
 
         # Header
         self.lbl_title = ctk.CTkLabel(self, text=title, font=("Arial", 14, "bold"))
@@ -55,13 +59,28 @@ class FileListPanel(ctk.CTkFrame):
         if not path: return
         try:
             total, used, free = shutil.disk_usage(path)
+            self.free_space = free
+            self.total_space = total
+            
             percent = used / total
             self.progress_bar.set(percent)
+            
             color = "#1f6aa5" 
             if percent > 0.9: color = "#c42b1c"
             self.progress_bar.configure(progress_color=color)
         except:
             self.progress_bar.set(0)
+            self.free_space = 0
+
+    def set_alert_mode(self, is_alert: bool):
+        if is_alert:
+            self.progress_bar.configure(progress_color="#c42b1c") 
+        else:
+            if self.total_space > 0:
+                percent = (self.total_space - self.free_space) / self.total_space
+                color = "#1f6aa5"
+                if percent > 0.9: color = "#c42b1c"
+                self.progress_bar.configure(progress_color=color)
 
     def render_files(self, files: List[FileObj], on_row_click, on_row_toggle, selected_ids):
         for widget in self.scroll_frame.winfo_children():
@@ -93,12 +112,9 @@ class InspectorPanel(ctk.CTkFrame):
         # STATE MANAGEMENT
         self.current_image = None
         self.active_file_id = None
-        self.thumbnail_cache = {} # MEMORY CACHE: {file_path: CTkImage}
-        
-        # THREAD POOL: 1 Worker to process thumbnails one by one without freezing UI
+        self.thumbnail_cache = {} 
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
 
-        # UI LAYOUT
         self.preview_box = ctk.CTkFrame(self, height=150, fg_color="#1a1a1a")
         self.preview_box.pack(fill="x", padx=20, pady=10)
         self._create_preview_label()
@@ -122,7 +138,7 @@ class InspectorPanel(ctk.CTkFrame):
 
         # 1. Reset UI (Safe Mode)
         try:
-            self.lbl_preview.configure(image=None, text=file_obj.file_type.name)
+            self.lbl_preview.configure(image=None, text=file_obj.file_type.name, text_color=["black", "white"])
             self.current_image = None
         except tkinter.TclError:
             self._rebuild_label()
@@ -134,7 +150,6 @@ class InspectorPanel(ctk.CTkFrame):
             if file_obj.path in self.thumbnail_cache:
                 self._apply_image(self.thumbnail_cache[file_obj.path])
             else:
-                # CACHE MISS: Offload to Thread
                 try:
                     self.lbl_preview.configure(text="Generating...", image=None)
                     self.executor.submit(self._threaded_generation, file_obj.path, file_obj.id)
@@ -149,17 +164,12 @@ class InspectorPanel(ctk.CTkFrame):
             f"STATUS:\n{file_obj.status.value.upper()}\n\n"
             f"PATH:\n{file_obj.path}"
         )
-        self.info_label.configure(text=details)
+        self.info_label.configure(text=details, text_color=["black", "white"])
 
     def _threaded_generation(self, path, requested_id):
-        """Runs on Background Thread - Extracts Raw PIL Image"""
-        if self.active_file_id != requested_id:
-            return # Cancel if user clicked away
-            
+        if self.active_file_id != requested_id: return
         try:
             pil_image = ThumbnailGenerator.generate_thumbnail(path)
-            
-            # Send result back to Main Thread for UI Update
             if pil_image:
                 self.after(0, lambda: self._on_thumbnail_ready(path, requested_id, pil_image))
             else:
@@ -168,14 +178,8 @@ class InspectorPanel(ctk.CTkFrame):
             print(f"BG Thread Error: {e}")
 
     def _on_thumbnail_ready(self, path, requested_id, pil_image):
-        """Runs on Main Thread - Converts to CTkImage and updates UI"""
-        # Create CTkImage (must be on main thread)
         ctk_img = ctk.CTkImage(light_image=pil_image, dark_image=pil_image, size=(200, 110))
-        
-        # Store in Cache
         self.thumbnail_cache[path] = ctk_img
-
-        # Update UI only if user is still looking at this file
         if self.active_file_id == requested_id:
             self._apply_image(ctk_img)
 
@@ -188,21 +192,22 @@ class InspectorPanel(ctk.CTkFrame):
 
     def _apply_image(self, ctk_img):
         try:
-            self.current_image = ctk_img # Anchor
+            self.current_image = ctk_img
             self.lbl_preview.configure(image=self.current_image, text="")
         except tkinter.TclError:
             self._rebuild_label()
             self.current_image = ctk_img
             self.lbl_preview.configure(image=self.current_image, text="")
 
-    def show_batch(self, count, total_size_bytes):
+    def show_batch(self, count, total_size_bytes, warning_msg=None):
         self.active_file_id = None
-        try:
-            self.lbl_preview.configure(image=None, text=f"{count} Items")
-            self.current_image = None
-        except tkinter.TclError:
-            self._rebuild_label()
-            self.lbl_preview.configure(image=None, text=f"{count} Items")
+        text_color = "#c42b1c" if warning_msg else ["black", "white"]
+        header_text = "⚠️ INSUFFICIENT SPACE" if warning_msg else f"{count} Items"
+
+        # FORCE REBUILD: Ensure any previous image is completely wiped
+        self._rebuild_label()
+        self.lbl_preview.configure(image=None, text=header_text, text_color=text_color)
+        self.current_image = None
 
         size_str = f"{total_size_bytes} B"
         for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
@@ -210,18 +215,22 @@ class InspectorPanel(ctk.CTkFrame):
                 size_str = f"{total_size_bytes:.2f} {unit}"
                 break
             total_size_bytes /= 1024
+            
         details = (
             f"BATCH SELECTION\n\n"
             f"ITEMS SELECTED:\n{count}\n\n"
             f"TOTAL SIZE:\n{size_str}\n\n"
         )
-        self.info_label.configure(text=details)
+        
+        if warning_msg:
+            details += f"\n{warning_msg}"
+            
+        self.info_label.configure(text=details, text_color=text_color)
 
     def clear_view(self):
         self.active_file_id = None
-        try:
-            self.lbl_preview.configure(image=None, text="No Selection")
-            self.current_image = None
-            self.info_label.configure(text="")
-        except tkinter.TclError:
-            pass
+        # FORCE REBUILD: Ensure any previous image is completely wiped
+        self._rebuild_label()
+        self.lbl_preview.configure(image=None, text="No Selection", text_color=["black", "white"])
+        self.current_image = None
+        self.info_label.configure(text="")

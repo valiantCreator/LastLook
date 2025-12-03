@@ -1,13 +1,14 @@
 # LastLook: Master Project Documentation
 
-**Version:** 2.2 (Python Production)
+**Version:** 0.6 (Beta)
 **Tagline:** "AYO SOMEBODY CHECK HIS HARD DRIVE."
+**Status:** Stable / Portable Build
 
 ---
 
 ## 1. Product Vision & Philosophy
 
-**LastLook** is a specialized file transfer verification tool for Digital Imaging Technicians (DITs) and Filmmakers. It prioritizes **visual verification** over blind copying.
+**LastLook** is a specialized file transfer verification tool for Digital Imaging Technicians (DITs), filmmakers, and photographers. Unlike standard operating system file managers (Finder/Explorer), which are designed for general-purpose use, LastLook prioritizes **data integrity**, **visual verification**, and **low-light usability**.
 
 ### The Core Problem
 
@@ -23,9 +24,21 @@ A 3-pane interface where every action in the Source (Left) triggers a verificati
 
 ---
 
-## 2. Technical Specifications & Data Models
+## 2. Technical Specifications & Architecture
 
-### 2.1 File Objects (The Data Structure)
+### 2.1 System Architecture (New in v0.6)
+
+The application is structured into distinct layers to separate UI, Logic, and Assets:
+
+- **`src/model/`**: Data definitions (`file_obj.py`, `types.py`).
+- **`src/core/`**: The Heavy Lifting.
+  - `scanner.py`: Handles `os.scandir` operations and the Source vs. Dest comparison loop.
+  - `engine.py`: The `TransferEngine` that runs `shutil.copy2` on a background thread (`threading`).
+  - `thumbnails.py`: Interface for the embedded `ffmpeg.exe` to generate frame grabs.
+- **`src/ui/`**: The Presentation Layer (`app_window.py`, `panels.py`, `widgets.py`).
+- **`src/utils/`**: Resource loader (`assets.py`) that locates icons and FFmpeg in both Dev and PyInstaller environments.
+
+### 2.2 File Objects (The Data Structure)
 
 Every file row in the UI maps to this Python Data Class:
 
@@ -36,7 +49,7 @@ Every file row in the UI maps to this Python Data Class:
 - **`status`**: Enum (Synced, Missing, Transferring).
 - **`type`**: Enum (Image, Video, Audio, Other).
 
-### 2.2 The Enums
+### 2.3 The Enums
 
 - **SyncStatus**:
   - `MISSING` (Red): Exists in Source, NOT in Dest (or size mismatch).
@@ -56,11 +69,13 @@ Every file row in the UI maps to this Python Data Class:
 
 ### 3.2 The Interaction Model
 
-- **Source Click:** Highlights the row. immediately searches `DestList`. If found -> Highlight Dest Row Green. If missing -> Flash Dest Row Red.
+- **Source Click:** Highlights the row. Immediately searches `DestList`. If found -> Highlight Dest Row Green. If missing -> Flash Dest Row Red.
 - **Dest Click (Bidirectional):** Highlights Dest row. Searches `SourceList`. Highlights Source Row Blue.
+- **Focus Management:** Clicking background deselects. Clicking active row toggles focus off.
 - **Batch Selection:**
-  - **Shift+Click:** Range Select.
-  - **Ctrl+Click:** Toggle Select.
+  - **Checkboxes:** Additive selection for batch operations.
+  - **Shift+Click:** Range Select (Future Scope).
+  - **Ctrl+Click:** Toggle Select (Future Scope).
   - **"Select All Missing":** Utility button to select all `Status == MISSING`.
 
 ### 3.3 The Secure Transfer Engine
@@ -68,7 +83,7 @@ Every file row in the UI maps to this Python Data Class:
 - **Threading:** MUST run on `threading.Thread` to prevent GUI freeze.
 - **Logic:**
   1.  Filter `Selection` for files where `Status == MISSING`.
-  2.  Check `DestDrive.FreeSpace > Batch.TotalSize`. If false -> **HALT**.
+  2.  Check `DestDrive.FreeSpace > Batch.TotalSize`. If false -> **HALT** (Future Scope).
   3.  Iterate:
       - Update UI -> `TRANSFERRING`.
       - `shutil.copy2(src, dst)` (Preserves Metadata).
@@ -81,7 +96,9 @@ Every file row in the UI maps to this Python Data Class:
 Dynamic content based on selection:
 
 - **0 Items:** "Select a file..."
-- **1 Item:** Thumbnail (FFmpeg/PIL), Filename, Size (MB/GB), Full Path.
+- **1 Item:** - **Video:** Uses embedded `ffmpeg` to extract a frame at 00:00:01 (Async Threaded).
+  - **Logic:** Implements RAM Caching (`self.thumbnail_cache`) for instant reloading.
+  - **Metadata:** Filename, Size (MB/GB), Full Path.
 - **>1 Items:** "Batch Summary" (Total Size, Count of Missing vs Synced).
 
 ### 3.5 Night Shift (Eye Guard)
@@ -93,23 +110,28 @@ Dynamic content based on selection:
 
 ## 4. Roadmap (Implementation Stages)
 
-### Phase 1: The Skeleton (Current Status)
+### Phase 1: The Skeleton (v0.1 - v0.2) - [COMPLETED]
 
 - [x] Basic 3-Pane Layout.
 - [x] File Scanning & Size Comparison.
 - [x] Threaded Transfer.
 - [x] Basic Red/Green UI.
 
-### Phase 2: The Logic (Next Priority)
+### Phase 2: The Intelligence (v0.3 - v0.6) - [COMPLETED]
 
-- [ ] **Multi-Select:** Checkboxes and Shift-Click logic.
-- [ ] **Batch Inspector:** Calculating total size of selection.
-- [ ] **"Select All Missing" Button.**
-- [ ] **Bidirectional Sync:** Dest -> Source highlighting.
+- [x] **Multi-Select:** Checkboxes and Batch Logic.
+- [x] **Batch Inspector:** Calculating total size of selection.
+- [x] **"Select All Missing" Button.**
+- [x] **Bidirectional Sync:** Dest -> Source highlighting.
+- [x] **Smart Inspector:** Toggle-off logic and background deselect.
+- [x] **Asset Injection:** PNG Icons via `assets` folder.
+- [x] **Video Thumbnails:** Embedded FFmpeg with Async Threading.
+- [x] **Stability Hardening:** Fixed Garbage Collection and Race Condition crashes.
 
-### Phase 3: The Polish
+### Phase 3: The Polish (Next Priority)
 
 - [ ] **MD5 Checksums:** Deep content verification.
-- [ ] **Video Thumbnails:** FFmpeg integration.
 - [ ] **Drive Capacity Bar:** Visual storage indicators.
-- [ ] **PDF Manifest:** Transfer receipt generation.
+- [ ] **Transfer Receipt:** Generate PDF Manifest.
+- [ ] **Job Monitor:** Speed/ETA readout.
+- [ ] **Advanced Inputs:** Implementation of Shift+Click (Range) and Ctrl+Click (Toggle) handlers.
