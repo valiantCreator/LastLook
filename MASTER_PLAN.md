@@ -1,6 +1,6 @@
 # LastLook: Master Project Documentation
 
-**Version:** 0.6 (Beta)
+**Version:** 0.9 (Release Candidate)
 **Tagline:** "AYO SOMEBODY CHECK HIS HARD DRIVE."
 **Status:** Stable / Portable Build
 
@@ -8,7 +8,7 @@
 
 ## 1. Product Vision & Philosophy
 
-**LastLook** is a specialized file transfer verification tool for Digital Imaging Technicians (DITs), filmmakers, and photographers. Unlike standard operating system file managers (Finder/Explorer), which are designed for general-purpose use, LastLook prioritizes **data integrity**, **visual verification**, and **low-light usability**.
+**LastLook** is a specialized file transfer verification tool for Digital Imaging Technicians (DITs), filmmakers, and photographers. Unlike standard operating system file managers (Finder/Explorer), which are designed for general-purpose use, LastLook prioritizes **data integrity**, **visual verification**, and **low-light usability**. It prioritizes **visual verification** over blind copying.
 
 ### The Core Problem
 
@@ -26,14 +26,14 @@ A 3-pane interface where every action in the Source (Left) triggers a verificati
 
 ## 2. Technical Specifications & Architecture
 
-### 2.1 System Architecture (New in v0.6)
+### 2.1 System Architecture (Updated in v0.9)
 
 The application is structured into distinct layers to separate UI, Logic, and Assets:
 
 - **`src/model/`**: Data definitions (`file_obj.py`, `types.py`).
 - **`src/core/`**: The Heavy Lifting.
   - `scanner.py`: Handles `os.scandir` operations and the Source vs. Dest comparison loop.
-  - `engine.py`: The `TransferEngine` that runs `shutil.copy2` on a background thread (`threading`).
+  - `engine.py`: The `TransferEngine` that uses a manual read/write loop (replacing `shutil.copy2`) to enable real-time Speed/ETA monitoring and MD5 Verification.
   - `thumbnails.py`: Interface for the embedded `ffmpeg.exe` to generate frame grabs.
 - **`src/ui/`**: The Presentation Layer (`app_window.py`, `panels.py`, `widgets.py`).
 - **`src/utils/`**: Resource loader (`assets.py`) that locates icons and FFmpeg in both Dev and PyInstaller environments.
@@ -55,6 +55,8 @@ Every file row in the UI maps to this Python Data Class:
   - `MISSING` (Red): Exists in Source, NOT in Dest (or size mismatch).
   - `SYNCED` (Green): Exists in both, Metadata matches.
   - `TRANSFERRING` (Blue/Spinner): Active copy.
+  - `VERIFYING` (Amber/Magnify): Active MD5 Hash Calculation.
+  - `ERROR` (Red/Warning): Checksum mismatch or I/O failure.
 - **FileType**: Derived from extension for icon rendering logic.
 
 ---
@@ -82,13 +84,13 @@ Every file row in the UI maps to this Python Data Class:
 
 - **Threading:** MUST run on `threading.Thread` to prevent GUI freeze.
 - **Logic:**
-  1.  Filter `Selection` for files where `Status == MISSING`.
-  2.  Check `DestDrive.FreeSpace > Batch.TotalSize`. If false -> **HALT** (Future Scope).
-  3.  Iterate:
-      - Update UI -> `TRANSFERRING`.
-      - `shutil.copy2(src, dst)` (Preserves Metadata).
-      - Post-Copy Check: `os.path.getsize(dst) == src.size`.
-      - Update UI -> `SYNCED`.
+  1.  **Capacity Check:** If `Selection Size > Dest Free Space`, lock Transfer button and alert user.
+  2.  **Iterate:**
+      - Update UI -> `TRANSFERRING` (Spinner).
+      - **Manual Copy:** Read/Write file in 1MB chunks to calculate Throughput (MB/s) and ETA.
+      - **Metadata:** Explicitly restore file timestamps via `shutil.copystat`.
+      - **Verification:** Calculate MD5 Hash of Source vs. Destination.
+      - Update UI -> `SYNCED` (if Hash matches) or `ERROR` (if mismatch).
 - **Cancellation:** Must support a "Stop" flag to halt the loop safely.
 
 ### 3.4 The Inspector Pane
@@ -97,9 +99,9 @@ Dynamic content based on selection:
 
 - **0 Items:** "Select a file..."
 - **1 Item:** - **Video:** Uses embedded `ffmpeg` to extract a frame at 00:00:01 (Async Threaded).
-  - **Logic:** Implements RAM Caching (`self.thumbnail_cache`) for instant reloading.
   - **Metadata:** Filename, Size (MB/GB), Full Path.
-- **>1 Items:** "Batch Summary" (Total Size, Count of Missing vs Synced).
+- **>1 Items:** "Batch Summary" (Total Size, Item Count).
+- **Capacity Alert:** If `Selection > Free Space`, displays Red Warning text showing exactly how much space needs to be freed.
 
 ### 3.5 Night Shift (Eye Guard)
 
@@ -114,24 +116,25 @@ Dynamic content based on selection:
 
 - [x] Basic 3-Pane Layout.
 - [x] File Scanning & Size Comparison.
-- [x] Threaded Transfer.
-- [x] Basic Red/Green UI.
+- [x] Threaded Transfer Engine.
+- [x] Batch Selection (Checkboxes).
 
 ### Phase 2: The Intelligence (v0.3 - v0.6) - [COMPLETED]
 
-- [x] **Multi-Select:** Checkboxes and Batch Logic.
-- [x] **Batch Inspector:** Calculating total size of selection.
-- [x] **"Select All Missing" Button.**
 - [x] **Bidirectional Sync:** Dest -> Source highlighting.
 - [x] **Smart Inspector:** Toggle-off logic and background deselect.
-- [x] **Asset Injection:** PNG Icons via `assets` folder.
-- [x] **Video Thumbnails:** Embedded FFmpeg with Async Threading.
+- [x] **Asset Injection:** Replaced Unicode chars with PNG Icons.
+- [x] **Video Thumbnails:** Embedded `ffmpeg.exe` with Async Threading.
 - [x] **Stability Hardening:** Fixed Garbage Collection and Race Condition crashes.
 
-### Phase 3: The Polish (Next Priority)
+### Phase 3: The Polish (v0.7 - v0.9) - [COMPLETED]
 
-- [ ] **MD5 Checksums:** Deep content verification.
-- [ ] **Drive Capacity Bar:** Visual storage indicators.
+- [x] **MD5 Checksums:** Deep content verification (The "Paranoia" Engine).
+- [x] **Drive Capacity Bar:** Visual storage indicators with "Insufficient Space" locking.
+- [x] **Job Monitor:** Speed/ETA readout using manual chunked transfer logic.
+
+### Phase 4: Final Release (v1.0)
+
 - [ ] **Transfer Receipt:** Generate PDF Manifest.
-- [ ] **Job Monitor:** Speed/ETA readout.
-- [ ] **Advanced Inputs:** Implementation of Shift+Click (Range) and Ctrl+Click (Toggle) handlers.
+- [ ] **Sound Alerts:** Audio cues.
+- [ ] **Cross-Platform:** Validation for macOS paths.

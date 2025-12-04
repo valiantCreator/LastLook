@@ -4,24 +4,26 @@
 
 **LastLook** is a specialized, "Dark Mode" file transfer verification tool for Filmmakers and DITs. Unlike standard file managers, it prioritizes **visual verification** ("Call and Response") to ensure every bit of footage makes it from the SD Card to the SSD safely.
 
-## 🚦 Status: Beta (v0.6)
+## 🚦 Status: Release Candidate (v0.9)
 
 The core engine is stable, packaged, and performance-optimized.
 
 ### Core Capabilities
 
 - ✅ **Visual Sync:** Traffic Light logic (Green=Synced, Red=Missing) with instant updates.
-- ✅ **Secure Transfer:** Threaded, non-blocking copy engine using `shutil` (preserves metadata).
+- ✅ **Secure Transfer:** Threaded, non-blocking copy engine with real-time telemetry.
 - ✅ **Eye Guard:** Amber-tinted "Night Shift" mode for low-light set environments.
 - ✅ **Portable Engine:** Ships with embedded `ffmpeg.exe` for standalone video processing.
 
-### Advanced Features (New in v0.6)
+### Advanced Features (New in v0.9)
 
 - ✅ **Smart Selection:** Batch checkboxes, "Select All Missing," and background deselect logic.
 - ✅ **Bidirectional Mirroring:** Clicking a file in the Destination highlights the original in Source.
 - ✅ **Live Video Thumbnails:** Asynchronous, threaded generation of frame grabs for video files.
 - ✅ **Instant Caching:** RAM-based caching for zero-latency previewing of previously clicked files.
 - ✅ **Stability Shield:** Robust error handling preventing Tkinter race conditions during rapid user interaction.
+- ✅ **Paranoia Engine:** MD5 Checksum verification ensures bit-for-bit data integrity.
+- ✅ **Job Monitor:** Real-time transfer speed (MB/s) and ETA calculation.
 
 ## 🧠 Roadmap & Feature Gaps
 
@@ -37,15 +39,19 @@ The core engine is stable, packaged, and performance-optimized.
 - [x] **Professional Assets:** Replaced Unicode characters with clean PNG icons.
 - [x] **Bidirectional Sync:** Dest -> Source highlighting implemented.
 
-### Phase 3: Professional Safety (The Shield) - [CURRENT PRIORITY]
+### Phase 3: Professional Safety (The Shield) - [COMPLETED]
 
-- [ ] **MD5 Checksum:** Upgrade from File Size verification to bit-for-bit Content Hash verification.
+- [x] **MD5 Checksum:** Upgrade from File Size verification to bit-for-bit Content Hash verification.
+- [x] **Capacity Guardrails:** Prevent transfer start if `Batch Size > Dest Free Space`.
+
+### Phase 4: Polish (The Feel) - [COMPLETED]
+
+- [x] **Job Monitor:** Real-time transfer speed (MB/s) and ETA readout in the footer.
+- [x] **Stability Hardening:** Fixed Garbage Collection and Race Condition crashes.
+
+### Phase 5: Final Delivery (v1.0 Goal)
+
 - [ ] **Transfer Receipt:** Generate a PDF/TXT Manifest at the end of the session.
-- [ ] **Capacity Guardrails:** Prevent transfer start if `Batch Size > Dest Free Space`.
-
-### Phase 4: Polish (The Feel)
-
-- [ ] **Job Monitor:** Real-time transfer speed (MB/s) and ETA readout in the footer.
 - [ ] **Sound Alerts:** Audio feedback on success/failure.
 
 ## 🛠️ Build Instructions (Dev)
