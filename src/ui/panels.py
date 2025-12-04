@@ -206,6 +206,12 @@ class FileListPanel(ctk.CTkFrame):
             
         self.active_highlight_id = file_id
 
+    # --- NEW METHOD: Force Single Row Update (For MD5 Status) ---
+    def refresh_row(self, file_obj: FileObj):
+        """Updates a specific row if it exists (for real-time status updates)"""
+        if file_obj.id in self.row_map:
+            self.row_map[file_obj.id].update_data(file_obj)
+
 class InspectorPanel(ctk.CTkFrame):
     def __init__(self, master):
         super().__init__(master, width=250)

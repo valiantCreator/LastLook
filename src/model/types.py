@@ -7,9 +7,11 @@ class FileType(Enum):
     OTHER = auto()
 
 class SyncStatus(Enum):
-    MISSING = "missing"           # Exists in Source, NOT in Dest
-    SYNCED = "synced"             # Exists in both (Name + Size match)
-    TRANSFERRING = "transferring" # Currently copying
+    MISSING = "missing"           # Exists in Source, NOT in Destination (Red)
+    SYNCED = "synced"             # Exists in both (Name + Size match) (Green)
+    TRANSFERRING = "transferring" # Currently copying (Blue Spinner)
+    VERIFYING = "verifying"       # Orange / Microscope (New!)
+    ERROR = "error"               # Red Warning (New!)
     PENDING = "pending"           # Queued for transfer
 
 class AppTheme(Enum):

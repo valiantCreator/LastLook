@@ -4,8 +4,12 @@ from ..model.file_obj import FileObj, SyncStatus
 from ..utils.assets import get_asset_path
 
 class FileRow(ctk.CTkFrame):
+    # Singleton Image Cache
     IMG_CHECK = None
     IMG_ERROR = None
+    IMG_WAIT = None   # New: Hourglass
+    IMG_VERIFY = None # New: Magnifying Glass
+    IMG_WARN = None   # New: Warning Triangle
 
     def __init__(self, master, file_obj: FileObj, on_click=None, on_toggle=None):
         super().__init__(master)
@@ -13,18 +17,25 @@ class FileRow(ctk.CTkFrame):
         self.on_click = on_click
         self.on_toggle = on_toggle
         
-        # State Tracking (For Performance)
+        # State Tracking
         self._last_status = None
         self._last_filename = None
         
-        # Load Images Once
+        # LOAD ALL ICONS ONCE
         if FileRow.IMG_CHECK is None:
             try:
+                # Standard Icons
                 FileRow.IMG_CHECK = ctk.CTkImage(Image.open(get_asset_path("check.png")), size=(20, 20))
                 FileRow.IMG_ERROR = ctk.CTkImage(Image.open(get_asset_path("error.png")), size=(20, 20))
+                
+                # New Status Icons (The "Wonky" Fix)
+                FileRow.IMG_WAIT = ctk.CTkImage(Image.open(get_asset_path("hourglass.png")), size=(20, 20))
+                FileRow.IMG_VERIFY = ctk.CTkImage(Image.open(get_asset_path("magnify.png")), size=(20, 20))
+                FileRow.IMG_WARN = ctk.CTkImage(Image.open(get_asset_path("warning.png")), size=(20, 20))
             except Exception as e:
                 print(f"Warning: Could not load icons: {e}")
 
+        # Base Styling
         self.default_color = "transparent"
         self.configure(corner_radius=6)
 
@@ -35,7 +46,7 @@ class FileRow(ctk.CTkFrame):
         self.checkbox = ctk.CTkCheckBox(self, text="", width=24, command=self._handle_toggle)
         self.checkbox.grid(row=0, column=0, padx=(10, 5), pady=5)
 
-        # 1. Icon
+        # 1. Icon Label
         self.lbl_icon = ctk.CTkLabel(self, text="", width=30)
         self.lbl_icon.grid(row=0, column=1, padx=5, pady=5)
 
@@ -57,35 +68,58 @@ class FileRow(ctk.CTkFrame):
         self.update_data(file_obj, force=True)
 
     def update_data(self, file_obj: FileObj, force=False):
-        """Smart Update: Only repaints if data actually changed"""
+        """Smart Update with Full Icon Support"""
         
-        # Optimization: Skip if data is identical
         if not force and self.file_obj == file_obj and self._last_status == file_obj.status:
             return
 
         self.file_obj = file_obj
         
-        # Text (Only update if changed)
+        # 1. Text Update
         if self._last_filename != file_obj.filename:
             self.lbl_name.configure(text=file_obj.filename)
             self.lbl_size.configure(text=file_obj.formatted_size)
             self._last_filename = file_obj.filename
         
-        # Icon & Color (Only update if status changed)
+        # 2. Visual Update (Now using Images for everything)
         if self._last_status != file_obj.status:
-            if file_obj.status == SyncStatus.SYNCED and FileRow.IMG_CHECK:
-                self.lbl_icon.configure(image=FileRow.IMG_CHECK, text="")
+            
+            # SYNCED (Green Check)
+            if file_obj.status == SyncStatus.SYNCED:
+                img = FileRow.IMG_CHECK
                 self.default_color = "#1c3a1c"
-            elif file_obj.status == SyncStatus.MISSING and FileRow.IMG_ERROR:
-                self.lbl_icon.configure(image=FileRow.IMG_ERROR, text="")
+            
+            # MISSING (Red X)
+            elif file_obj.status == SyncStatus.MISSING:
+                img = FileRow.IMG_ERROR
                 self.default_color = "#3a1c1c"
+            
+            # TRANSFERRING (Hourglass)
             elif file_obj.status == SyncStatus.TRANSFERRING:
-                self.lbl_icon.configure(image=None, text="⏳")
+                img = FileRow.IMG_WAIT
                 self.default_color = "#1c2e3a"
-            else:
-                self.lbl_icon.configure(image=None, text="❌")
-                self.default_color = "transparent"
+            
+            # VERIFYING (Magnifying Glass)
+            elif file_obj.status == SyncStatus.VERIFYING:
+                img = FileRow.IMG_VERIFY
+                self.default_color = "#3a2e1c"
                 
+            # ERROR (Warning Triangle)
+            elif file_obj.status == SyncStatus.ERROR:
+                img = FileRow.IMG_WARN
+                self.default_color = "#4a1c1c"
+                
+            else:
+                img = None
+                self.default_color = "transparent"
+            
+            # Apply Image (Fallback to text only if image load failed)
+            if img:
+                self.lbl_icon.configure(image=img, text="")
+            else:
+                # Fallback for dev mode without assets
+                self.lbl_icon.configure(image=None, text="?")
+
             self.configure(fg_color=self.default_color)
             self._last_status = file_obj.status
 

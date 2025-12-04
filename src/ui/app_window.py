@@ -259,10 +259,11 @@ class AppWindow(ctk.CTk):
 
         self.btn_transfer.configure(state="disabled", text="TRANSFERRING...")
         
+        # Pass the new Update callback that expects a file object
         self.transfer_engine.run_transfer(
             files=files_to_transfer,
             dest_folder=self.dest_path,
-            on_progress=lambda msg: self.lbl_status.configure(text=msg),
+            on_progress=self.update_progress, # Use method instead of lambda
             on_complete=self.on_transfer_complete
         )
 
@@ -271,6 +272,18 @@ class AppWindow(ctk.CTk):
         self.selected_ids.clear() 
         self.refresh_view()
         self.panel_dest.update_storage(self.dest_path)
+
+    # --- NEW UPDATE METHOD ---
+    def update_progress(self, msg, file_obj=None):
+        """Thread-safe UI update"""
+        # Always run on main thread
+        self.after(0, lambda: self._apply_update(msg, file_obj))
+
+    def _apply_update(self, msg, file_obj):
+        self.lbl_status.configure(text=msg)
+        if file_obj:
+            # Force the Source row to redraw (showing the Spinner/Check)
+            self.panel_source.refresh_row(file_obj)
 
     def toggle_night_shift(self):
         self.night_shift_on = not self.night_shift_on
