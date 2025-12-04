@@ -1,6 +1,7 @@
 import customtkinter as ctk
 import tkinter.filedialog as filedialog
 import os
+import concurrent.futures
 from PIL import Image
 from .panels import FileListPanel, InspectorPanel
 from ..core.scanner import Scanner
@@ -12,12 +13,10 @@ class AppWindow(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        # Window Setup
         self.title("LastLook - Professional DIT Tool")
         self.geometry("1200x800")
         ctk.set_appearance_mode("Dark")
         
-        # State
         self.source_path = None
         self.dest_path = None
         self.source_files = []
@@ -25,8 +24,10 @@ class AppWindow(ctk.CTk):
         self.highlighted_id = None 
         self.transfer_engine = TransferEngine()
         self.night_shift_on = False
+        
+        # PERFORMANCE: Background Scanner Thread
+        self.scan_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
 
-        # Load Icons
         try:
             self.icon_folder = ctk.CTkImage(Image.open(get_asset_path("folder.png")), size=(24, 24))
             self.icon_disk = ctk.CTkImage(Image.open(get_asset_path("disk.png")), size=(24, 24))
@@ -45,7 +46,6 @@ class AppWindow(ctk.CTk):
         self.header = ctk.CTkFrame(self, height=60, corner_radius=0)
         self.header.grid(row=0, column=0, columnspan=3, sticky="ew")
         
-        # Updated Buttons with Images
         self.btn_source = ctk.CTkButton(
             self.header, 
             text=" Select Source", 
@@ -110,12 +110,37 @@ class AppWindow(ctk.CTk):
             self.refresh_view()
 
     def refresh_view(self):
+        """Starts the Async Scan Process"""
         if not self.source_path: return
 
-        self.source_files = Scanner.scan_directory(self.source_path)
-        if self.dest_path:
-            self.source_files = Scanner.compare_directories(self.source_files, self.dest_path)
+        # UI Feedback: Show user we are working
+        self.lbl_status.configure(text="Scanning directories...")
+        
+        # Offload the heavy 'os.scandir' logic to a thread
+        self.scan_executor.submit(self._threaded_scan, self.source_path, self.dest_path)
+
+    def _threaded_scan(self, src, dst):
+        """Runs in Background"""
+        try:
+            # 1. Heavy Disk I/O
+            files = Scanner.scan_directory(src)
             
+            # 2. Heavy Comparison Logic
+            if dst:
+                files = Scanner.compare_directories(files, dst)
+            
+            # 3. Return to Main Thread
+            self.after(0, lambda: self._on_scan_complete(files))
+        except Exception as e:
+            print(f"Scan Error: {e}")
+            self.after(0, lambda: self.lbl_status.configure(text="Scan Error"))
+
+    def _on_scan_complete(self, files):
+        """Runs on Main Thread - Updates UI with results"""
+        self.source_files = files
+        self.lbl_status.configure(text="Ready.")
+
+        # Trigger the optimized renderer (which we fixed in the previous step)
         self.panel_source.render_files(
             self.source_files, 
             on_row_click=self.on_file_click, 
@@ -152,7 +177,6 @@ class AppWindow(ctk.CTk):
         if len(self.selected_ids) == 0:
             self.panel_inspector.clear_view()
         else:
-            # Refresh batch view (likely with updated warning state if applicable)
             self.update_ui_state()
 
     def on_file_toggle(self, file_obj, is_checked):
@@ -169,27 +193,31 @@ class AppWindow(ctk.CTk):
             if f.status == SyncStatus.MISSING:
                 self.selected_ids.add(f.id)
                 count += 1
-        self.refresh_view() 
+        
+        # We don't need to re-scan, just re-render visuals
+        # Using the cached file list is instant
+        self.panel_source.render_files(
+            self.source_files,
+            on_row_click=self.on_file_click,
+            on_row_toggle=self.on_file_toggle,
+            selected_ids=self.selected_ids
+        )
+        self.update_ui_state()
 
     def update_ui_state(self):
-        """Central hub for updating Inspector and Transfer Button logic"""
-        
         total_size = 0
         warning_msg = None
         is_blocked = False
 
-        # Calculate Total
         if len(self.selected_ids) > 0:
             total_size = sum(f.size for f in self.source_files if f.id in self.selected_ids)
 
-        # 1. Check Capacity Logic
         if self.dest_path:
             dest_free_space = self.panel_dest.free_space
             if total_size > dest_free_space:
                 is_blocked = True
                 self.panel_dest.set_alert_mode(True)
                 
-                # Create detailed warning message
                 def fmt(b): 
                     for u in ['B','KB','MB','GB']: 
                         if b<1024: return f"{b:.2f}{u}"
@@ -203,7 +231,6 @@ class AppWindow(ctk.CTk):
             else:
                 self.panel_dest.set_alert_mode(False)
 
-        # 2. Update Inspector
         if len(self.selected_ids) > 0:
             self.panel_inspector.show_batch(len(self.selected_ids), total_size, warning_msg)
         elif self.highlighted_id:
@@ -212,7 +239,6 @@ class AppWindow(ctk.CTk):
         else:
             self.panel_inspector.clear_view()
 
-        # 3. Update Button
         if len(self.selected_ids) > 0 and self.dest_path:
             if is_blocked:
                 self.btn_transfer.configure(state="disabled", text="INSUFFICIENT DISK SPACE", fg_color="#550000")
