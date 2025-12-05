@@ -4,26 +4,26 @@
 
 **LastLook** is a specialized, "Dark Mode" file transfer verification tool for Filmmakers and DITs. Unlike standard file managers, it prioritizes **visual verification** ("Call and Response") to ensure every bit of footage makes it from the SD Card to the SSD safely.
 
-## 🚦 Status: Release Candidate (v0.9)
+## 🚦 Status: Gold Master (v1.0)
 
-The core engine is stable, packaged, and performance-optimized.
+The application is feature-complete, stable, and ready for production use.
 
 ### Core Capabilities
 
 - ✅ **Visual Sync:** Traffic Light logic (Green=Synced, Red=Missing) with instant updates.
-- ✅ **Secure Transfer:** Threaded, non-blocking copy engine with real-time telemetry.
+- ✅ **Secure Transfer:** Threaded, non-blocking copy engine using `shutil` (preserves metadata).
 - ✅ **Eye Guard:** Amber-tinted "Night Shift" mode for low-light set environments.
 - ✅ **Portable Engine:** Ships with embedded `ffmpeg.exe` for standalone video processing.
 
-### Advanced Features (New in v0.9)
+### Advanced Features
 
 - ✅ **Smart Selection:** Batch checkboxes, "Select All Missing," and background deselect logic.
 - ✅ **Bidirectional Mirroring:** Clicking a file in the Destination highlights the original in Source.
 - ✅ **Live Video Thumbnails:** Asynchronous, threaded generation of frame grabs for video files.
-- ✅ **Instant Caching:** RAM-based caching for zero-latency previewing of previously clicked files.
-- ✅ **Stability Shield:** Robust error handling preventing Tkinter race conditions during rapid user interaction.
+- ✅ **Instant Caching:** RAM-based caching for zero-latency previewing.
 - ✅ **Paranoia Engine:** MD5 Checksum verification ensures bit-for-bit data integrity.
 - ✅ **Job Monitor:** Real-time transfer speed (MB/s) and ETA calculation.
+- ✅ **Transfer Receipt:** Automatically generates a text-based Audit Log (`Transfer_Log_[Date].txt`) proving verification.
 
 ## 🧠 Roadmap & Feature Gaps
 
@@ -49,10 +49,10 @@ The core engine is stable, packaged, and performance-optimized.
 - [x] **Job Monitor:** Real-time transfer speed (MB/s) and ETA readout in the footer.
 - [x] **Stability Hardening:** Fixed Garbage Collection and Race Condition crashes.
 
-### Phase 5: Final Delivery (v1.0 Goal)
+### Phase 5: Final Delivery (v1.0) - [COMPLETED]
 
-- [ ] **Transfer Receipt:** Generate a PDF/TXT Manifest at the end of the session.
-- [ ] **Sound Alerts:** Audio feedback on success/failure.
+- [x] **Transfer Receipt:** Generate a TXT Manifest at the end of the session.
+- [ ] **Sound Alerts:** Audio feedback (Moved to v1.1).
 
 ## 🛠️ Build Instructions (Dev)
 

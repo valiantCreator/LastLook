@@ -1,14 +1,14 @@
 # LastLook: Master Project Documentation
 
-**Version:** 0.9 (Release Candidate)
+**Version:** 1.0 (Gold Master)
 **Tagline:** "AYO SOMEBODY CHECK HIS HARD DRIVE."
-**Status:** Stable / Portable Build
+**Status:** Production Ready
 
 ---
 
 ## 1. Product Vision & Philosophy
 
-**LastLook** is a specialized file transfer verification tool for Digital Imaging Technicians (DITs), filmmakers, and photographers. Unlike standard operating system file managers (Finder/Explorer), which are designed for general-purpose use, LastLook prioritizes **data integrity**, **visual verification**, and **low-light usability**. It prioritizes **visual verification** over blind copying.
+**LastLook** is a specialized file transfer verification tool for Digital Imaging Technicians (DITs), filmmakers, and photographers. Unlike standard operating system file managers (Finder/Explorer), which are designed for general-purpose use, LastLook prioritizes **data integrity**, **visual verification**, and **low-light usability**.
 
 ### The Core Problem
 
@@ -26,14 +26,14 @@ A 3-pane interface where every action in the Source (Left) triggers a verificati
 
 ## 2. Technical Specifications & Architecture
 
-### 2.1 System Architecture (Updated in v0.9)
+### 2.1 System Architecture
 
 The application is structured into distinct layers to separate UI, Logic, and Assets:
 
 - **`src/model/`**: Data definitions (`file_obj.py`, `types.py`).
 - **`src/core/`**: The Heavy Lifting.
   - `scanner.py`: Handles `os.scandir` operations and the Source vs. Dest comparison loop.
-  - `engine.py`: The `TransferEngine` that uses a manual read/write loop (replacing `shutil.copy2`) to enable real-time Speed/ETA monitoring and MD5 Verification.
+  - `engine.py`: The `TransferEngine` that uses a manual read/write loop to enable real-time Speed/ETA monitoring, MD5 Verification, and Manifest generation.
   - `thumbnails.py`: Interface for the embedded `ffmpeg.exe` to generate frame grabs.
 - **`src/ui/`**: The Presentation Layer (`app_window.py`, `panels.py`, `widgets.py`).
 - **`src/utils/`**: Resource loader (`assets.py`) that locates icons and FFmpeg in both Dev and PyInstaller environments.
@@ -63,22 +63,17 @@ Every file row in the UI maps to this Python Data Class:
 
 ## 3. Functional Requirements
 
-### 3.1 The "Traffic Light" UI (Grid Layout)
+### 3.1 The "Traffic Light" UI
 
-- **Green Row (Synced):** Background `#1c3a1c`. Icon: ✅.
-- **Red Row (Missing):** Background `#3a1c1c`. Icon: ❌.
-- **Blue Tint (Selected):** User has clicked the row.
+- **Green Row (Synced):** Background `#1c3a1c` with Green Check Icon.
+- **Red Row (Missing):** Background `#3a1c1c` with Red X Icon.
+- **Selection:** Checkbox + Blue Row Highlight.
 
 ### 3.2 The Interaction Model
 
-- **Source Click:** Highlights the row. Immediately searches `DestList`. If found -> Highlight Dest Row Green. If missing -> Flash Dest Row Red.
-- **Dest Click (Bidirectional):** Highlights Dest row. Searches `SourceList`. Highlights Source Row Blue.
+- **Mirror Logic:** Clicking Source highlights Dest. Clicking Dest highlights Source.
 - **Focus Management:** Clicking background deselects. Clicking active row toggles focus off.
-- **Batch Selection:**
-  - **Checkboxes:** Additive selection for batch operations.
-  - **Shift+Click:** Range Select (Future Scope).
-  - **Ctrl+Click:** Toggle Select (Future Scope).
-  - **"Select All Missing":** Utility button to select all `Status == MISSING`.
+- **Batch Selection:** Checkboxes allow additive selection. "Select All Missing" utility button grabs all Red rows.
 
 ### 3.3 The Secure Transfer Engine
 
@@ -90,23 +85,14 @@ Every file row in the UI maps to this Python Data Class:
       - **Manual Copy:** Read/Write file in 1MB chunks to calculate Throughput (MB/s) and ETA.
       - **Metadata:** Explicitly restore file timestamps via `shutil.copystat`.
       - **Verification:** Calculate MD5 Hash of Source vs. Destination.
+      - **Logging:** Append details to internal transaction log.
       - Update UI -> `SYNCED` (if Hash matches) or `ERROR` (if mismatch).
-- **Cancellation:** Must support a "Stop" flag to halt the loop safely.
+- **Finalization:** Write `Transfer_Log.txt` to destination folder upon completion.
 
 ### 3.4 The Inspector Pane
 
-Dynamic content based on selection:
-
-- **0 Items:** "Select a file..."
-- **1 Item:** - **Video:** Uses embedded `ffmpeg` to extract a frame at 00:00:01 (Async Threaded).
-  - **Metadata:** Filename, Size (MB/GB), Full Path.
-- **>1 Items:** "Batch Summary" (Total Size, Item Count).
+- **Smart Preview:** Uses embedded `ffmpeg` (Async Threaded) to show video frames.
 - **Capacity Alert:** If `Selection > Free Space`, displays Red Warning text showing exactly how much space needs to be freed.
-
-### 3.5 Night Shift (Eye Guard)
-
-- **Implementation:** Toggle button.
-- **Behavior:** Shifts UI colors to Amber (`#FFB347` Text, `#2e1c05` Backgrounds) to reduce blue light emission in dark environments.
 
 ---
 
@@ -114,17 +100,15 @@ Dynamic content based on selection:
 
 ### Phase 1: The Skeleton (v0.1 - v0.2) - [COMPLETED]
 
-- [x] Basic 3-Pane Layout.
-- [x] File Scanning & Size Comparison.
+- [x] Basic 3-Pane Layout & File Scanning.
 - [x] Threaded Transfer Engine.
 - [x] Batch Selection (Checkboxes).
 
 ### Phase 2: The Intelligence (v0.3 - v0.6) - [COMPLETED]
 
 - [x] **Bidirectional Sync:** Dest -> Source highlighting.
-- [x] **Smart Inspector:** Toggle-off logic and background deselect.
-- [x] **Asset Injection:** Replaced Unicode chars with PNG Icons.
-- [x] **Video Thumbnails:** Embedded `ffmpeg.exe` with Async Threading.
+- [x] **Asset Injection:** PNG Icons via `assets` folder.
+- [x] **Video Thumbnails:** Embedded FFmpeg with Async Threading.
 - [x] **Stability Hardening:** Fixed Garbage Collection and Race Condition crashes.
 
 ### Phase 3: The Polish (v0.7 - v0.9) - [COMPLETED]
@@ -133,8 +117,7 @@ Dynamic content based on selection:
 - [x] **Drive Capacity Bar:** Visual storage indicators with "Insufficient Space" locking.
 - [x] **Job Monitor:** Speed/ETA readout using manual chunked transfer logic.
 
-### Phase 4: Final Release (v1.0)
+### Phase 4: Final Release (v1.0) - [COMPLETED]
 
-- [ ] **Transfer Receipt:** Generate PDF Manifest.
-- [ ] **Sound Alerts:** Audio cues.
-- [ ] **Cross-Platform:** Validation for macOS paths.
+- [x] **Transfer Receipt:** Generate Audit Log Manifest.
+- [ ] **Cross-Platform:** Validation for macOS paths (Future v1.1).
